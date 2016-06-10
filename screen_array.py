@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 
+"""Create an array of terminal windows.
+
+The cli does not provide visitor interface as the python API does.
+"""
+
+import argparse
 import math
 import subprocess
+import sys
 
 class ScreenArrayError(Exception):
     pass
 
 class ScreenArray(object):
 
-    def __init__(self, session, *, width = 3, height = 3, quiet = False):
+    def __init__(self, session, *, height = 3, width = 3, quiet = False):
+        if height <= 0:
+            raise ScreenArrayError("height ({}) <= 0.".format(height))
+        if width <= 0:
+            raise ScreenArrayError("width ({}) <= 0.".format(width))
         self.session = session
         self.quiet = quiet
         self.width = width
@@ -25,23 +36,22 @@ class ScreenArray(object):
             self._do('split')       # C-a S
 
         # Make the first row.
-        # The first row does not need to create the screen for the first window. 
+        # The first row does not need to create the screen for the first window.
         for i in range(self.width - 1):
             self._do('split -v')    #  C-a |
             self._do('focus')       #  C-a tab
             self._do('screen')      #  C-a c
 
-        if self.height == 1:
-            return
-
         # Make the rest rows.
         for i in range(self.height - 1):
-            for j in range(self.width):
-                self._do('focus')       #  C-a tab
+            self._do('focus')       #  C-a tab
+            self._do('screen')      #  C-a c
+            for j in range(self.width - 1):
                 self._do('split -v')    #  C-a |
+                self._do('focus')       #  C-a tab
                 self._do('screen')      #  C-a c
-    
-    def visit(self, func, *, mask = None)
+
+    def visit(self, func, *, mask = None):
         """Visit each window, issue commands for issue window.
 
         Arguments:
@@ -77,25 +87,54 @@ class ScreenArray(object):
             self._do(func(i))
 
     def _do(self, cmd):
-        """Execute screen command in a subshell."""
+        """Execute screen command in a subshell.
+
+        If self.quiet if True, print the command to stdout in additional to
+        issuing it in a subshell.
+        """
         cmdstr = 'screen -S {} -X {}'.format(self.session, cmd)
         if not self.quiet:
             print(cmdstr)
         subprocess.check_call(cmdstr, shell = True)
 
     def __str__(self):
-        return '{obj.session}: {obj.height} x {obj.width} >= {obj.capacity}'.format(obj = self)
+        return '{obj.session}: {obj.height} x {obj.width}'.format(obj = self)
 
 if __name__ == '__main__':
-    g = ScreenArray('beef', width = 5, height = 4, capacity = 20)
-    print(g)
-    g.set_height(2)
-    print(g)
-    g.set_height(7)
-    print(g)
-    g.set_height(2)
-    print(g)
-    g.set_width(7)
-    print(g)
-    g.set_width(3)
-    g.set_height(3)
+    parser = argparse.ArgumentParser(description = __doc__,
+            formatter_class = argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument('session',
+            metavar = 'SESSION',
+            type = str,
+            help = 'session name to attach to')
+    parser.add_argument('height',
+            metavar = 'HEIGHT',
+            type = int,
+            default = 3,
+            nargs = '?',
+            help = 'height of the table, default = 3')
+    parser.add_argument('width',
+            metavar = 'WIDTH',
+            type = int,
+            default = 3,
+            nargs = '?',
+            help = 'width of the table, default = 3')
+    parser.add_argument('-q', '--quiet',
+            action = 'store_true',
+            help = 'do not print the commands used to make the screen array')
+
+    args = parser.parse_args()
+    if args.height <= 0:
+        print('HEIGHT ({}) must be a positive integer.'.format(args.height))
+        sys.exit(1)
+    if args.width <= 0:
+        print('WIDTH ({}) must be a positive integer.'.format(args.width))
+        sys.exit(1)
+
+    g = ScreenArray(args.session,
+            height = args.height,
+            width = args.width,
+            quiet = args.quiet,
+    )
+    g.make_array()
