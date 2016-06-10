@@ -25,6 +25,10 @@ class ScreenArray(object):
         self.width = width
         self.height = height
 
+    @property
+    def capacity(self):
+        return self.width * self.height
+
     def make_array(self):
         """Make array in the screen session.
 
@@ -52,7 +56,7 @@ class ScreenArray(object):
                 self._do('screen')      #  C-a c
 
     def visit(self, func, *, mask = None):
-        """Visit each window, issue commands for issue window.
+        """Visit and issue commands in each window.
 
         Arguments:
             func: A python function that takes a non-negative integer as
@@ -62,8 +66,9 @@ class ScreenArray(object):
                 The returned string, @ret is the command issued to the window
                 with the @index:
                         screen -S session -X select @index
-                        screen -S session -X @ret
-                As a final note, @index starts at 0.
+                        screen -S session -X exec @ret
+                As a final note, @index starts at 0, if it is in the @mask.
+                The traversal happens in creasing order of indices.
             mask: An iterable of indices to visit. Only windows of these indices
                 are visited. It is the caller's responsibility to make sure that
                 all indices in this @mask are valid. The default value is None,
@@ -75,16 +80,19 @@ class ScreenArray(object):
         Raises:
             ScreenArrayError: The mask has invalid indices.
         """
-        fullmask = set(range(self.width * self.height))
+        fullmask = set(range(self.capacity))
         if mask is None:
             mask = fullmask
         else:
-            if not mask <= fullmask:
+            if not set(mask) <= fullmask:
                 raise ScreenArrayError("{} is not a subset of {}.".
                         format(mask, fullmask))
 
-        for i in mask:
-            self._do(func(i))
+        for i in sorted(mask):
+            self._do('select {}'.format(i))
+            self._do('exec ' + func(i))
+
+        self._do('select {}'.format(self.capacity))
 
     def _do(self, cmd):
         """Execute screen command in a subshell.
